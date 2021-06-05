@@ -1,10 +1,13 @@
 #include <iostream>
 #include <time.h>
 #include <string.h>
+#include <limits>
 #define BASE_SIZE (sizeof(BASE)*8)
+//#define MAX_BASE_VALUE ((DBASE) 1 << BASE_SIZE)
 using namespace std;
 typedef unsigned short BASE;
 typedef unsigned int DBASE;
+BASE MAX_BASE_VALUE = ~0;
 
 
 class BigNum
@@ -14,6 +17,37 @@ private:
 	int maxLen;
 	BASE *digits;
 public:
+
+	int weirdSub(const BigNum &that, int ix)
+	{
+		DBASE tmp;
+		int k = 0;
+		for (int i = 0; i < that.len; ++i)
+		{
+			tmp = digits[i + ix] + MAX_BASE_VALUE - that.digits[i] - k;
+			digits[ix + i] = (BASE) tmp;
+			k = !(tmp >> BASE_SIZE);
+		}
+		for (int i = that.len; k && i <= len; ++i, k = !(tmp >> BASE_SIZE))
+		{
+			tmp = digits[ix + i] + MAX_BASE_VALUE - k;
+			digits[i + ix] = (BASE) tmp;
+		}
+		lenNorm();
+		return k;
+	}
+	void weirdAdd(BigNum &that, int ix)
+	{
+		int k = 0;
+		for (int i = 0; i < that.len - 2; ++i)
+		{
+			DBASE tmp = digits[ix + i] + that.digits[i] + k;
+			k = tmp >> BASE_SIZE;
+			digits[i + ix] = tmp;
+		}
+		lenNorm();
+	}
+
 	BigNum(int l = 1, bool flag = true): len(l), maxLen(l)
 	{
 		digits = new BASE[maxLen];
@@ -48,11 +82,20 @@ public:
 		}
 		return *this;
 	}
+	BigNum & operator= (const BASE that)
+	{
+		delete[] digits;
+		len = 1;
+		digits = new BASE[1];
+		digits[0] = that;
+		return *this;
+	}
 	
 	BASE & operator[](int ix)
 	{
 		return digits[ix];
 	}
+
 
 	friend istream & operator>> (istream &in, BigNum &that)
 	{
@@ -99,6 +142,8 @@ public:
 		return out;
 	}
 	
+
+
 	bool operator== (const BigNum &that)
 	{
 		if (len != that.len) return false;
@@ -223,26 +268,27 @@ public:
 		*this = *this - that;
 		return *this;
 	}
-	BigNum operator* (BASE num)
+	BigNum operator* (const BASE num)
 	{
-		BigNum mul1(len + 1, true);
+		BigNum mul(len + 1, true);
 		DBASE tmp = 0;
-		int k = 0, j = 0;
-		for (; j < len; ++j, k = tmp >> BASE_SIZE)
+		BASE k = 0;
+		for (int j = 0; j < len; ++j)
 		{
-			tmp = (digits[j] * num) + k;
-			mul1.digits[j] = (BASE) tmp;
+			tmp = ((DBASE) digits[j]) * ((DBASE) num) + k;
+			k = tmp >> BASE_SIZE;
+			mul.digits[j] = (BASE) tmp;
 		}
-		mul1.digits[j] = k;
-		mul1.lenNorm();
-		return mul1;
+		mul.digits[len] = k;
+		mul.lenNorm();
+		return mul;
 	}
-	BigNum operator*= (BASE num)
+	BigNum operator*= (const BASE num)
 	{
 		*this = *this * num;
 		return *this;
 	}
-	BigNum operator* (BigNum &that)
+	BigNum operator* (const BigNum &that)
 	{
 		BigNum mul(len + that.len, true);
 		DBASE tmp, k;
@@ -251,16 +297,16 @@ public:
 			k ^= k;
 			for (int j = 0; j < that.len; ++j)
 			{
-				tmp = (DBASE) that[j] * digits[i] + mul[i + j] + k;
-				mul[i + j] = tmp;
+				tmp = (DBASE) that.digits[j] * digits[i] + mul[i + j] + k;
+				mul.digits[i + j] = tmp;
 				k = tmp >> BASE_SIZE;
 			}
-			mul[that.len + i] += k;
+			mul.digits[that.len + i] += k;
 		}
 		mul.lenNorm();
 		return mul;
 	}
-	BigNum operator*= (BigNum &that)
+	BigNum operator*= (const BigNum &that)
 	{
 		*this = (*this) * (that);
 		return *this;
@@ -268,98 +314,187 @@ public:
 	BigNum operator/ (const BASE num)
 	{
 		if (num <= 0) return 0;
-		BigNum div1(len, true);
-		int j = 0;
-		BASE r = 0;
-		DBASE tmp;
-		do
+		BigNum d(len, true);
+		DBASE tmp = 0, k = 0;
+		for (int i = len - 1; i >= 0; --i)
 		{
-			tmp = (r << BASE_SIZE) + digits[len - 1 - j];
-			div1.digits[len - 1 - j] = tmp / num;
-			r = tmp % num;
-			++j;
-		}while (j < len);
-		return div1;
+			tmp = k << BASE_SIZE + digits[i];
+			k = tmp % num;
+			d.digits[i] = tmp / num;
+		}
+		d.lenNorm();
+		return d;
+	}
+	BigNum operator/= (const BASE num)
+	{
+		*this = *this / num;
+		return *this;
 	}
 	BASE operator% (const BASE num)
 	{
 		if (num <= 0) return 0;
-		BASE module1;
-		BigNum div1(len, true);
-		int j = 0;
-		DBASE tmp;
-		do
+		DBASE tmp, mod;
+		for (int i = len - 1; i >= 0; --i)
 		{
-			tmp = (module1 << BASE_SIZE) + digits[len - 1 - j];
-			div1.digits[len - 1 - j] = tmp / num;
-			module1 = tmp % num;
-			++j;
-		}while (j < len);
-		return module1;
+			tmp = mod << BASE_SIZE + digits[i];
+			mod = tmp % num;
+		}
+		return mod;
 	}
-	/*
+	BASE operator%= (const BASE num)
+	{
+		BASE mod = *this % num;
+		return mod;
+	}
+	
 	BigNum operator/ (BigNum &that)
 	{
-		BigNum zer(that.len, true), one(that.len, true);
-		one.digits[0] = 1;
-		if (*this == that) return one;
-		if (that <= zer || *this < that) return zer;
-		BigNum div2(len, true);
-		BigNum r(that.len, true);
-		DBASE d = (that.digits[that.len - 1] + 1) >> BASE_SIZE;
-		*this = *this / 10 * d;
-		that = that * d;
-		int m = len - that.len;
-		BASE _r, _q;
-		do
+		if (that.len == 1 && that.digits[0] != 0)
 		{
-			_q = (digits[m + that.len] << BASE_SIZE + digits[m + that.len - 1]) / that.digits[that.len - 1];
-			_r = (digits[m + that.len] << BASE_SIZE + digits[m + that.len - 1]) % that.digits[that.len - 1];
-			do
+			BigNum res = *this / that.digits[0];
+			return res;
+		}
+		if (that.len == 1 && that.digits[0] == 0 || *this == that) return 1;
+		if (*this < that) return 0;
+		BigNum q(len - that.len + 1);
+		DBASE d = MAX_BASE_VALUE / (that.digits[that.len - 1] + 1), q_, r_;
+		BigNum u(*this), v(that);	//чтобы было проще идти по алгоритму (соответствие переменных)
+		u *= d;
+		v *= d;
+		int j = len - that.len;
+		if (len == u.len)
+		{
+			if (u.len == u.maxLen)
 			{
-				if (_q << BASE_SIZE == _q * _q || _q * that.digits[that.len - 2] > _r << BASE_SIZE + digits[m + that.len - 2])
+				BigNum tmp(u);
+				delete[] u.digits;
+				u.digits = new BASE[u.maxLen + 1];
+				for (int i = 0; i < tmp.len; ++i) u.digits[i] = tmp.digits[i];
+				u.maxLen++;
+			}
+			u.digits[len] = 0;
+			u.len = len + 1;
+		}
+		while (j >= 0)
+		{
+			q_ = (u.digits[j + that.len] * MAX_BASE_VALUE + u.digits[j + that.len - 1]) / (v.digits[that.len - 1]);
+			r_ = (u.digits[j + that.len] * MAX_BASE_VALUE + u.digits[j + that.len - 1]) % (v.digits[that.len - 1]);
+			if (q_ >= MAX_BASE_VALUE || q_ * v.digits[that.len - 2] > MAX_BASE_VALUE * r_ + u.digits[j + that.len - 2])
+			{
+				--q_;
+				r_ += v.digits[that.len - 1];
+				if ((r_ < MAX_BASE_VALUE) &&(q_ >= MAX_BASE_VALUE || q_ * v.digits[that.len - 2] > MAX_BASE_VALUE * r_ + u.digits[j + that.len - 2])) 
 				{
-					--_q;
-					_r += that.digits[that.len - 1];
+					--q_;
+					r_ += v.digits[that.len - 1];
 				}
-			} while(_r << BASE_SIZE == _r * _r);
-			//тут какое-то волшебство с вычетанием из определенной части числа
-		} //while ();
-		
-		div2.lenNorm();
-		return div2;
+			}
+			q.digits[j] = q_;
+			int k = u.weirdSub(v * q_, j);
+			if (k)
+			{
+				q.digits[j]--;
+				u.weirdAdd(v, j);
+			}
+			--j;
+		}
+		q.lenNorm();
+		return q;
+	}
+
+	BigNum operator/= (BigNum &that)
+	{
+		*this = *this / that;
+		return *this;
 	}
 	
 	BigNum operator% (BigNum &that)
 	{
-		BigNum zer(that.len, true);
-		if (that <= zer || *this == that) return zer;
-		if (*this < that) return *this;
-		BigNum q(len - that.len, true);
-		BigNum module2(that.len, true);
-
-		if (module2 >= that) return zer;
-		return module2;
+		if (that.len == 1 && that.digits[0] != 0)
+		{
+			BigNum r(1, 1);
+			r.digits[0] = *this % that.digits[0];
+			return r;
+		}
+		if (that.digits[0] == 0) throw invalid_argument("ERROR: DIVISION BY ZERO");
+		if (that == *this)
+		{
+			BigNum r = 0;
+			return r;
+		}
+		if(*this < that) return *this;
+		BigNum r(that.len - 1), u(*this), v(that);
+		DBASE d = MAX_BASE_VALUE / (that.digits[that.len - 1] + 1);
+		u *= d;
+		v *= d;
+		if (len == u.len)
+		{
+			if (u.len == u.maxLen)
+			{
+				BigNum tmp(u);
+				delete[] u.digits;
+				u.digits = new BASE[u.maxLen + 1];
+				for (int i = 0; i < tmp.len; ++i) u.digits[i] = tmp.digits[i];
+				u.maxLen++;
+			}
+			u.digits[len] = 0;
+			u.len = len + 1;
+		}
+		int j = len - that.len;
+		DBASE q_, r_;
+		do
+		{
+			q_ = ((u.digits[j + that.len] * MAX_BASE_VALUE+u.digits[j + that.len - 1]) / v.digits[that.len - 1]);
+			r_ = ((u.digits[j + that.len] * MAX_BASE_VALUE+u.digits[j + that.len - 1]) % v.digits[that.len - 1]);
+			if (q_ >= MAX_BASE_VALUE || q_ * v.digits[that.len - 2] > MAX_BASE_VALUE * r_ + u.digits[j + that.len - 2])
+			{
+				--q_;
+				r_ += v.digits[that.len - 1];
+				if ((r_ < MAX_BASE_VALUE) &&(q_ >= MAX_BASE_VALUE || q_ * v.digits[that.len - 2] > MAX_BASE_VALUE * r_ + u.digits[j + that.len - 2])) 
+				{
+					--q_;
+					//r_ += v.digits[that.len - 1];
+				}
+			}
+			int k = u.weirdSub(v * q_, j);
+			if (k) u.weirdAdd(v, j);
+			--j;
+		} while (j >= 0);
+		r = u / d;
+		r.lenNorm();
+		return r;
 	}
-	*/
+	BigNum operator%= (BigNum &that)
+	{
+		*this = *this % that;
+		return *this;
+	}
+	
+
 /*
+
 	friend istream & operator>> (istream &in, BigNum &that)
 	{
 		string s;
 		in >> s;
-		DBASE tmp;
-		BASE k;
-		that.maxLen = (s.length() - 1) / (BASE_SIZE / 4) + 2;
-		that.len = 1;
+		if (s.length() > that.maxLen)
+		{
+			cerr << "s.length() > that.maxLen" << endl;
+			exit(0);
+		}
+		DBASE tmp = 0;
+		BASE k = 0;
 		delete[] that.digits;
+		that.len = s.length();
 		that.digits = new BASE[that.maxLen];
-		for (int i = that.maxLen - 1; i--;) that.digits[i] = 0;
-		for (int i = 0; i < that.maxLen; ++i)
+		for (int i = 0; i < that.maxLen; ++i) that.digits[i] = 0;
+		for (int i = 0; i < that.len; ++i)
 		{
 			if (s[i] >= '0' && s[i] <= '9')
 			{
+				char _ch = s[i] - '0';
 				that *= 10;
-				that += (s[i] - '0');
+				that +=_ch;
 			}
 			else break;
 		}
@@ -369,11 +504,18 @@ public:
 	friend ostream & operator<< (ostream &out, BigNum &that)
 	{
 		string s = "";
-		for (int i = that.len - 1; i--;) s.push_back(char(that % ((BASE) 10) + 48));
+		BigNum tmp = that;
+		while (tmp.digits[0] != 0 || tmp.len > 1)
+		{
+			s.push_back(tmp % 10 + '0');
+			tmp /= 10;
+		}
 		out << s;
 		return out;
 	}
+
 */
+
 	void lenNorm()
 	{
 		len = maxLen;
@@ -384,8 +526,8 @@ public:
 int main()
 {
 	srand(time(0));
-	BigNum a(4, false), b(4, false), c, d(4, false);
-	cout << "a = " << a << endl << "b = " << b << endl << "d = " << d << endl;
+	BigNum a(4, false), b(4, false), c, d(4, false), cop(a);
+	cout << "a = " << a << endl << "b = " << b << endl << "d = " << d << endl << "copy of a = " << cop << endl;
 	c = a + b;
 	cout << "a + b = " << c << endl;
 	c -= a;
@@ -394,6 +536,15 @@ int main()
 	cout << "a * b = " << c << endl;
 	c *= d;
 	cout << "(a * b) * d = " << c << endl;
+	cout << "a = " << a << " b = " << b << endl;
+	c = a / b;
+	cout << "a / b = " << c << endl;
+	c = b / a;
+	cout << "b / a = " << c << endl;
+	c = a % b;
+	cout << "a % b = " << c << endl;
+	c = b % a;
+	cout << "b % a = " << c << endl;
 	//calculatori.ru
 	return 1;
 }
