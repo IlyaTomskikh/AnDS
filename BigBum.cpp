@@ -3,7 +3,6 @@
 #include <string.h>
 #include <limits>
 #define BASE_SIZE (sizeof(BASE)*8)
-//#define MAX_BASE_VALUE ((DBASE) 1 << BASE_SIZE)
 using namespace std;
 typedef unsigned short BASE;
 typedef unsigned int DBASE;
