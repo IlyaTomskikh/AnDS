@@ -6,8 +6,8 @@
 #define BASE_SIZE (sizeof(BASE)*8)
 #define MAX_BASE_VALUE ((DBASE) 1 << BASE_SIZE)
 using namespace std;
-typedef unsigned short BASE;
-typedef unsigned int DBASE;
+typedef unsigned char BASE;
+typedef unsigned short DBASE;
 
 
 class BigNum
@@ -85,7 +85,6 @@ public:
 	{
 		digits = new BASE[maxLen];
 		for (int i = 0; i < maxLen; ++i) digits[i] = that.digits[i];
-		lenNorm();
 	}
 	~BigNum()
 	{
@@ -508,8 +507,7 @@ public:
 	
 	void lenNorm()
 	{
-		len = maxLen;
-		for(int i = maxLen - 1; i > 0; --i) if (digits[i] == 0) --len;
+		while (len - 1 > 0 && digits[len - 1] == 0) --len;
 	}
 };
 
